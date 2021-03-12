@@ -192,15 +192,18 @@ def get_rolling_avg_round_reached(league, by = 'conf_standing', start_season = 2
         tourney_results_df = tourney_results_df.merge(conf_win_pcts_df, on = ['TeamID', 'Season'])
         group_by_1_cols = ['Season', 'ConfAbbrev', 'rank_in_conf']
         group_by_2_cols = ['ConfAbbrev', 'rank_in_conf']
+        colname_prefix = 'conf'
     elif (by == 'coach/team') and (league == 'men'):
         coach_df = pd.read_csv(f"{prefix}TeamCoaches.csv") ## right now prefix can only be M
         tourney_results_df = tourney_results_df.merge(coach_df, on = ['TeamID', 'Season'])
         group_by_1_cols = ['Season', 'CoachName']
         group_by_2_cols = 'CoachName'
+        colname_prefix = 'coach'
     else:
         ## Instead of coach for women, we'll use teamID
         group_by_1_cols = ['Season', 'TeamID']
         group_by_2_cols = 'TeamID'
+        colname_prefix = 'team'
         
     ## For teams that win the championship, add another 1 to their round to give credit for "advancing"
     tourney_results_df['round'] = tourney_results_df.apply(lambda x: x['round'] + 1 if 
@@ -210,25 +213,35 @@ def get_rolling_avg_round_reached(league, by = 'conf_standing', start_season = 2
     ## Roll across required seasons and calculate new avg. rounds by conf/standing
     avg_max_rd_dfs = []
     for season in range(start_season, end_season):
+        ## Limit the tourney results to an n_year_avg range
         yr_results_df = tourney_results_df[(tourney_results_df['Season'] >=  season-n_year_avg) &
                                            (tourney_results_df['Season'] < season)]
+        
+        ## Get the maximum round reached for each season
         max_rounds = (yr_results_df.groupby(group_by_1_cols)
                       .agg({'round': max}).reset_index().rename(columns = {'round': 'max_round'}))
         
+        ## Sum the maximum rounds by team to be later used in an average
+        ### (avg. needs to include years where they were not in the tourney, counted as 0)
         avg_max_rd_df = (max_rounds.groupby(group_by_2_cols)
                                    .agg({'max_round': np.sum, 'Season': [len, max, min]})
                                    .reset_index().rename(columns = {'max_round': 'total_rounds'}))
-        min_season = np.min(avg_max_rd_df[('Season', 'min')])
-        max_season = np.max(avg_max_rd_df[('Season', 'max')])
-        avg_max_rd_df['avg_round'] = avg_max_rd_df['total_rounds']/(max_season-min_season+1)
-        avg_max_rd_df['avg_rd_season_range'] = f"{min_season}-{max_season}"
         
+        ## Get rid of the multi-level columns
+        avg_max_rd_df.columns = ['_'.join(col) if '' not in col else ''.join(col) for col in
+                                 avg_max_rd_df.columns.values]
+        
+        ## Calculate number of seasons and list the current season iteration as the "valid" szn.
+        min_season = np.min(avg_max_rd_df['Season_min'])
+        max_season = np.max(avg_max_rd_df['Season_max'])
+        avg_max_rd_df['Season'] = season
+        avg_max_rd_df['avg_rd_season_range'] = f"{min_season}-{max_season}"
+
+        ## Calculate the average round reached
+        avg_max_rd_df[f'{colname_prefix}_avg_round'] = avg_max_rd_df['total_rounds_sum']/(max_season-min_season+1)
         avg_max_rd_dfs.append(avg_max_rd_df)
     
-    full_avg_max_rd_df = pd.concat(avg_max_rd_dfs)
-    full_avg_max_rd_df.columns = ['_'.join(col) if '' not in col else ''.join(col) for col in
-                                            full_avg_max_rd_df.columns.values]
-    
-    full_avg_max_rd_df['Season'] = full_avg_max_rd_df['Season_max']+1
+    ## Add all the seasons together and format column names
+    full_avg_max_rd_df = pd.concat(avg_max_rd_dfs).drop_duplicates()
     
     return full_avg_max_rd_df
