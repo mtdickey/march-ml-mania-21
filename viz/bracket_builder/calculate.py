@@ -195,7 +195,8 @@ def compute_conditional_probs(sub_filepath, league = 'men'):
     tourney_seeds_df = pd.read_csv(f"{prefix}NCAATourneySeeds.csv")
     tourney_seeds_df = tourney_seeds_df[tourney_seeds_df['Season'] == 2021].copy()
     tourney_slots_df = pd.read_csv(f"{prefix}NCAATourneySlots.csv")
-    tourney_slots_df = tourney_slots_df[tourney_slots_df['Season'] == 2021].copy()
+    if league == 'men':
+        tourney_slots_df = tourney_slots_df[tourney_slots_df['Season'] == 2021].copy()
     
     ## Merge in seeds to submission
     tourney_seeds_df = tourney_seeds_df.rename(columns = {'TeamID': 'TeamID_1', 'Seed': 'Seed_1'})
